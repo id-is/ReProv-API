@@ -23,6 +23,7 @@ class Activity(Base):
     id = Column(Integer, autoincrement=True, primary_key=True)
     type = Column(Enum('workflow_execution', 'step_execution'))
     name = Column(String(255), nullable=False)
+    status = Column(String(255), nullable=True)
     start_time = Column(DateTime, default=datetime.utcnow, nullable=False)
     end_time = Column(DateTime, nullable=True)
 

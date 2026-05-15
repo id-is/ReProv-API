@@ -5,6 +5,55 @@ from ruamel.yaml import YAML
 yaml = YAML(typ='safe', pure=True)
 
 
+def add_resource_monitoring(spec_file):
+    """Wrap each step's command with Python resource monitoring.
+
+    For each step, replaces the original command with a Python wrapper that:
+    1. Runs the original command via subprocess
+    2. Captures peak memory, CPU time, disk I/O via getrusage
+    3. Prints metrics as a tagged JSON line to stderr (parsed from REANA logs)
+    """
+    data = yaml.load(spec_file)
+
+    for step_name in list(data['steps']):
+        run = data['steps'][step_name]['run']
+        original_base = run['baseCommand']
+        original_args = run.get('arguments', [])
+
+        # Reconstruct original command parts as a flat list
+        if isinstance(original_base, list):
+            cmd_parts = list(original_base)
+        else:
+            cmd_parts = [original_base]
+        cmd_parts.extend(original_args)
+
+        # Build wrapper: python -c <script> <original_cmd_parts...>
+        # Prints metrics to stderr with a known prefix so we can parse from logs
+        wrapper_script = (
+            "import resource,subprocess,json,time,sys; "
+            "start=time.time(); "
+            "r=subprocess.run(sys.argv[1:]); "
+            "u=resource.getrusage(resource.RUSAGE_CHILDREN); "
+            "sys.stderr.write('REPROV_METRICS:'+json.dumps({"
+            "'wall_time':time.time()-start,"
+            "'user_cpu':u.ru_utime,"
+            "'sys_cpu':u.ru_stime,"
+            "'max_rss_kb':u.ru_maxrss,"
+            "'io_in':u.ru_inblock,"
+            "'io_out':u.ru_oublock,"
+            "'exit_code':r.returncode"
+            "})+'\\n'); "
+            "sys.exit(r.returncode)"
+        )
+
+        run['baseCommand'] = 'python'
+        run['arguments'] = ['-c', wrapper_script] + cmd_parts
+
+    with BytesIO() as output_yaml:
+        yaml.dump(data, output_yaml)
+        return output_yaml.getvalue()
+
+
 def add_mapping_step(spec_file):
     data = yaml.load(spec_file)
 
@@ -18,16 +67,41 @@ def add_mapping_step(spec_file):
 
         steps_file_outputs.update(file_ouputs)
 
+    # Build map step inputs: string params for the echo + File dependencies
+    # to force CWL to run the map step AFTER all real steps complete
     map_step_in = {}
+    map_step_run_inputs = {}
+
+    # Track which output IDs have dynamic (CWL expression) vs static globs
+    # Dynamic: $(inputs.model_name) → needs a string input to resolve the filename
+    # Static: validation_report.txt → literal filename, no input needed
+    output_to_value = {}  # output_id → either "$(inputs.X)" or literal string
+
     for s in steps_file_outputs:
-        s_name = steps_file_outputs[s].split('.')[-1].rstrip(')')
-        map_step_in[s_name] = s_name
+        glob = steps_file_outputs[s]
+        if '$(inputs.' in glob:
+            # Dynamic glob — extract the input name and pass it through
+            input_name = glob.split('.')[-1].rstrip(')')
+            map_step_in[input_name] = input_name
+            map_step_run_inputs[input_name] = 'string'
+            output_to_value[s] = f"$(inputs.{input_name})"
+        else:
+            # Static glob — use the literal filename directly
+            output_to_value[s] = glob
+
+    # Add File inputs from each step's outputs to create a data dependency
+    # This ensures CWL won't schedule map until all steps have completed
+    dep_counter = 0
+    for step_name in data['steps']:
+        step_outputs = data['steps'][step_name]['run']['outputs']
+        for o in step_outputs:
+            if o['type'] == 'File':
+                dep_key = f"_dep_{dep_counter}"
+                map_step_in[dep_key] = f"{step_name}/{o['id']}"
+                map_step_run_inputs[dep_key] = 'File'
+                dep_counter += 1
 
     map_step_out = ['mapping']
-    map_step_run_inputs = {}
-    for s in steps_file_outputs:
-        s_name = steps_file_outputs[s].split('.')[-1].rstrip(')')
-        map_step_run_inputs[s_name] = 'string'
 
     map_step = {}
     map_step['in'] = map_step_in
@@ -43,15 +117,9 @@ def add_mapping_step(spec_file):
     map_step['run']['class'] = 'CommandLineTool'
     map_step['run']['baseCommand'] = 'sh'
 
-    mapping = {
-        s: f"$(inputs.{map_step_in[steps_file_outputs[s].split('.')[-1].rstrip(')')]}"
-        for s in steps_file_outputs
-    }
     args = ''
-    for m in mapping:
-        args += f"""
-        echo {m},{mapping[m]}) >> map.txt
-        """
+    for output_id, value in output_to_value.items():
+        args += f"\n        echo {output_id},{value} >> map.txt\n        "
 
     map_step['run']['arguments'] = ["-c"] + [args]
     data['steps']['map'] = map_step
