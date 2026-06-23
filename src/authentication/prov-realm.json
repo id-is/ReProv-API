@@ -83,6 +83,24 @@
         "clientRole": false,
         "containerId": "cd2fbbd0-ab1a-4fab-9f3b-0dc7746b6ecb",
         "attributes": {}
+      },
+      {
+        "id": "500d39ac-87eb-489e-b89f-3151fd6235e1",
+        "name": "reprov_user",
+        "description": "Standard ReProv user: register, execute and read workflows",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "cd2fbbd0-ab1a-4fab-9f3b-0dc7746b6ecb",
+        "attributes": {}
+      },
+      {
+        "id": "861f8f70-f32c-4fbc-b647-9b0d6efcf09d",
+        "name": "reprov_admin",
+        "description": "ReProv administrator: may delete workflows and executions",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "cd2fbbd0-ab1a-4fab-9f3b-0dc7746b6ecb",
+        "attributes": {}
       }
     ],
     "client": {
@@ -432,13 +450,19 @@
       "lastName": "One",
       "email": "user1@example.com",
       "attributes": {},
-      "groups": ["group1"],
+      "groups": [
+        "group1"
+      ],
       "credentials": [
         {
           "type": "password",
           "value": "password1",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "reprov_user",
+        "reprov_admin"
       ]
     },
     {
@@ -449,13 +473,18 @@
       "lastName": "Two",
       "email": "user2@example.com",
       "attributes": {},
-      "groups": ["group1"],
+      "groups": [
+        "group1"
+      ],
       "credentials": [
         {
           "type": "password",
           "value": "password2",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "reprov_user"
       ]
     },
     {
@@ -466,13 +495,18 @@
       "lastName": "Three",
       "email": "user3@example.com",
       "attributes": {},
-      "groups": ["group1"],
+      "groups": [
+        "group1"
+      ],
       "credentials": [
         {
           "type": "password",
           "value": "password3",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "reprov_user"
       ]
     },
     {
@@ -483,13 +517,19 @@
       "lastName": "Four",
       "email": "user4@example.com",
       "attributes": {},
-      "groups": ["group2"],
+      "groups": [
+        "group2"
+      ],
       "credentials": [
         {
           "type": "password",
           "value": "password4",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "reprov_user",
+        "reprov_admin"
       ]
     },
     {
@@ -500,13 +540,18 @@
       "lastName": "Five",
       "email": "user5@example.com",
       "attributes": {},
-      "groups": ["group2"],
+      "groups": [
+        "group2"
+      ],
       "credentials": [
         {
           "type": "password",
           "value": "password5",
           "temporary": false
         }
+      ],
+      "realmRoles": [
+        "reprov_user"
       ]
     }
   ],

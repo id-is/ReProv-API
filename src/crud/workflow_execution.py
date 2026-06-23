@@ -15,7 +15,7 @@ from starlette.background import BackgroundTask
 from schema.workflow_execution import WorkflowExecution, WorkflowExecutionStep, StepResourceUsage, ExecutionEnvironment
 from schema.workflow_registry import WorkflowRegistry
 from schema.init_db import session
-from authentication.auth import authenticate_user
+from authentication.auth import require_user, require_admin
 from models.user import User
 from utils.cwl import add_resource_monitoring, add_mapping_step, replace_placeholders
 from reana_client.api import client
@@ -36,7 +36,7 @@ router = APIRouter()
     description="List all workflows that have been executed",
 )
 async def list_executed_workflows(
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_executions = session.query(WorkflowExecution).filter(
@@ -107,7 +107,7 @@ async def list_executed_workflows(
 )
 async def get_workflow_execution_by_id(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(
@@ -224,7 +224,7 @@ async def get_workflow_execution_by_id(
 )
 async def get_execution_logs(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(
@@ -332,7 +332,7 @@ def _fetch_aiod_content(content_url):
 async def execute_workflow(
     registry_id: int,
     background_tasks: BackgroundTasks,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_registry = session.query(WorkflowRegistry).filter(
@@ -768,12 +768,12 @@ async def monitor_execution(reana_id):
 
 @router.delete(
     "/delete/",
-    description="Delete every workflow execution that was associated with a registry ID OR with a name provided by the execution system "
+    description="Delete every workflow execution that was associated with a registry ID OR with a name provided by the execution system. Requires the reprov_admin role."
 )
 async def delete_workflow_execution(
     registry_id: int = None,
     reana_name: str = None,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_admin)
 ):
     if registry_id and reana_name:
         return Response(
@@ -843,7 +843,7 @@ async def delete_workflow_execution(
 )
 async def download_outputs(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(
@@ -899,7 +899,7 @@ async def download_outputs(
 )
 async def download_inputs(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(

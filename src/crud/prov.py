@@ -17,7 +17,7 @@ from schema.prov import Entity, Activity, Agent
 from schema.init_db import session
 from schema.workflow_execution import WorkflowExecution, WorkflowExecutionStep, StepResourceUsage, ExecutionEnvironment
 from schema.workflow_registry import WorkflowRegistry
-from authentication.auth import authenticate_user
+from authentication.auth import require_user, require_admin
 from models.user import User
 from ruamel.yaml import YAML
 from models.response import Response
@@ -116,7 +116,7 @@ def _resolve_cwl_files(spec):
 )
 async def track_provenance(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(
@@ -387,7 +387,7 @@ async def track_provenance(
 )
 async def draw_provenance(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(
@@ -669,7 +669,7 @@ async def draw_provenance(
 )
 async def export_provenance_json(
     execution_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow_execution = session.query(WorkflowExecution).filter(
