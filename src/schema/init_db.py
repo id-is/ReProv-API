@@ -1,3 +1,4 @@
+"""Database engine, session, and declarative base shared across the schema."""
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base

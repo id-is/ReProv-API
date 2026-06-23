@@ -1,3 +1,6 @@
+"""Authenticated user assembled from Keycloak token claims."""
+
+
 class User:
     def __init__(self, id, username, email, group, first_name, last_name, realm_roles, client_roles):
         self.id = id

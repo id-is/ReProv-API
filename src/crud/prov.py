@@ -1,3 +1,10 @@
+"""Provenance endpoints — capture, visualise, and export W3C PROV.
+
+Assembles recorded executions into a PROV model (entities, activities, agents)
+and exposes it as a PNG graph (via the ``prov`` library) or a PROV-JSON
+document. Failures and AIoD-sourced inputs are represented as first-class
+provenance.
+"""
 import os
 import re
 from datetime import datetime
@@ -207,7 +214,28 @@ async def track_provenance(
         )
         file_entity_objects[filename] = entity
 
-    entities = [workflow_entity] + list(file_entity_objects.values())
+    # Create external-file entities for AIoD-sourced workflow inputs, so data
+    # pulled from the AIoD catalogue is recorded in the provenance graph with a
+    # link back to the catalogue (the AIoD entity URL is kept as the path).
+    external_inputs = {
+        inp['id']: inp['valueFromPlatform'].strip('{}')
+        for inp in spec_file_yaml.get('inputs', [])
+        if isinstance(inp, dict) and 'valueFromPlatform' in inp
+    }
+    external_entity_objects = {}
+    for input_id, aiod_url in external_inputs.items():
+        external_entity_objects[input_id] = Entity(
+            type='external_file',
+            path=aiod_url,
+            name=input_id,
+            workflow_execution_id=workflow_execution.id
+        )
+
+    entities = (
+        [workflow_entity]
+        + list(file_entity_objects.values())
+        + list(external_entity_objects.values())
+    )
 
     # Create step activities with status from execution steps
     step_activities = [
@@ -251,6 +279,17 @@ async def track_provenance(
         # Link input files (used by step)
         for filename in cwl_step_inputs.get(step_name, []):
             entity = file_entity_objects.get(filename)
+            if entity:
+                step_act.used.append(entity)
+
+        # Link AIoD external inputs consumed by this step (used by step)
+        step_spec = spec_file_yaml.get('steps', {}).get(step_name, {})
+        step_in = step_spec.get('in', {})
+        run_inputs = step_spec.get('run', {}).get('inputs', {})
+        for run_in_name, run_in_type in run_inputs.items():
+            if run_in_type != 'File':
+                continue
+            entity = external_entity_objects.get(step_in.get(run_in_name))
             if entity:
                 step_act.used.append(entity)
 
@@ -305,6 +344,16 @@ async def track_provenance(
             workflow_execution_id=workflow_execution.id
         )
         session.add(software)
+
+        # The group the user belongs to is modeled as an organization agent,
+        # capturing collective responsibility for the execution.
+        if workflow_execution.group:
+            group = Agent(
+                type='organization',
+                name=workflow_execution.group,
+                workflow_execution_id=workflow_execution.id
+            )
+            session.add(group)
 
         session.commit()
     except SQLAlchemyError as e:
@@ -511,6 +560,11 @@ async def draw_provenance(
             Agent.workflow_execution_id == workflow_execution.id,
             Agent.type == 'software'
         ).first()
+
+        group = session.query(Agent).filter(
+            Agent.workflow_execution_id == workflow_execution.id,
+            Agent.type == 'organization'
+        ).first()
     except SQLAlchemyError as e:
         session.rollback()
         return Response(
@@ -538,6 +592,19 @@ async def draw_provenance(
         delegate=software.name,
         responsible=person.name
     )
+
+    # The user acts on behalf of their group (organization agent)
+    if group:
+        doc.agent(
+            group.name,
+            {
+                'type': 'organization'
+            }
+        )
+        doc.actedOnBehalfOf(
+            delegate=person.name,
+            responsible=group.name
+        )
     doc.attribution(
         entity=workflow_entity.name,
         agent=software.name
@@ -657,10 +724,16 @@ async def export_provenance_json(
     # Delegation
     person = next((a for a in agents if a.type == 'person'), None)
     software = next((a for a in agents if a.type == 'software'), None)
+    group = next((a for a in agents if a.type == 'organization'), None)
     if person and software:
         prov_doc["actedOnBehalfOf"]["_:d1"] = {
             "prov:delegate": f"reprov:{software.name}",
             "prov:responsible": f"reprov:{person.name}"
+        }
+    if person and group:
+        prov_doc["actedOnBehalfOf"]["_:d2"] = {
+            "prov:delegate": f"reprov:{person.name}",
+            "prov:responsible": f"reprov:{group.name}"
         }
 
     # Entities

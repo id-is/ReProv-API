@@ -1,3 +1,8 @@
+"""Keycloak-based authentication.
+
+Validates OAuth2/OpenID Connect bearer tokens against the configured Keycloak
+realm and maps the token claims onto a :class:`~models.user.User`.
+"""
 import os
 from fastapi.security import OAuth2AuthorizationCodeBearer
 from models.user import User
@@ -19,6 +24,7 @@ keycloak_openid = KeycloakOpenID(
 
 
 async def get_idp_public_key():
+    """Return the realm's RSA public key in PEM format for token verification."""
     return (
         "-----BEGIN PUBLIC KEY-----\n"
         f"{keycloak_openid.public_key()}"
@@ -27,6 +33,7 @@ async def get_idp_public_key():
 
 
 async def get_payload(token: str = Security(oauth2_scheme)) -> dict:
+    """Decode and verify the bearer token, returning its claims (401 on failure)."""
     try:
         return keycloak_openid.decode_token(
             token,
@@ -46,6 +53,7 @@ async def get_payload(token: str = Security(oauth2_scheme)) -> dict:
 
 
 async def authenticate_user(payload: dict = Depends(get_payload)) -> User:
+    """Map verified token claims onto a :class:`User` (400 if claims are missing)."""
     try:
         return User(
             id=payload.get("sub"),

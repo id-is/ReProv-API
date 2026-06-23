@@ -25,6 +25,19 @@ This work assumes a platform and core components in line with the architecture s
  - Data provenance for workflows executed within the REANA framework.
  - Visualization of data provenance by generating graph-based PNG representations, allowing for clear and intuitive 
 exploration of workflow dependencies and data flow.
+ - Export of provenance as [W3C PROV-JSON](https://www.w3.org/submissions/prov-json/).
+ - Failure-aware provenance: failed steps are recorded with their status, exit code, and error message.
+ - Per-step resource-usage capture (CPU time, peak memory, disk I/O).
+ - Linking workflow inputs to datasets in the [AI-on-Demand](https://aiod.eu) catalogue via the `valueFromPlatform` keyword.
+ - A [Python SDK](sdk/README.md) for programmatic access to the API.
+
+
+## Documentation & examples
+
+ - [USAGE.md](USAGE.md) — end-to-end walkthrough (authenticate → register → execute → capture provenance), with `curl` and SDK examples.
+ - [examples/](examples/README.md) — ready-to-run example CWL workflows (MNIST, a deliberately failing variant, an AIoD-linked variant, and a larger heatwave-prediction pipeline).
+ - [sdk/](sdk/README.md) — the Python SDK.
+ - Interactive API docs (OpenAPI/Swagger) are served at `/docs` once the API is running.
 
 
 ## Prerequisites
@@ -122,7 +135,7 @@ Once started, you should be able to
 
  1.  Visit the REST API at http://localhost:8000/docs 
 Instructions for using the API will be provided in the next sections
- 3. Visit Keycloak at http://localhost:8080/ . In the current configuration Keylcoak is filled with 5 users and 2 groups. Each user has credentials of the form *user_i / password_i* where i $\in [1,\dots,5]$.
+ 3. Visit Keycloak at http://localhost:8080/ . In the current configuration Keylcoak is filled with 5 users and 2 groups. Each user has credentials of the form *useri / passwordi* where i $\in [1,\dots,5]$ (e.g. *user1 / password1*).
  You can have admin access by using the credentials defined above. 
 
 
@@ -141,7 +154,7 @@ After you click on it, the authentication prompt will be opened. You have to add
 ![screenshot](media/authorize_prompt.png)
 
 
-Next, click authorize button and you will be redirected to keycloak to fill your credentials. In this example, we are using *user_1* for user and *password_1* for password.
+Next, click authorize button and you will be redirected to keycloak to fill your credentials. In this example, we are using *user1* for user and *password1* for password.
 
 ![screenshot](media/keycloak_prompt.png)
 

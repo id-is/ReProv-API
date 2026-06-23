@@ -1,3 +1,4 @@
+"""ORM model and request model for the workflow registry."""
 from sqlalchemy import Column, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.mysql import LONGTEXT
 from .init_db import Base

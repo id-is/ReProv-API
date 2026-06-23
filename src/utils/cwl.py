@@ -1,3 +1,9 @@
+"""CWL specification transforms applied before submission to REANA.
+
+Wraps each step with a resource-monitoring shim, appends a mapping step that
+records step output filenames, and resolves AIoD ``valueFromPlatform`` input
+placeholders against the AI-on-Demand catalogue.
+"""
 from io import BytesIO
 import requests
 from ruamel.yaml import YAML
@@ -140,9 +146,16 @@ def add_mapping_step(spec_file):
         return output_yaml.getvalue()
 
 
-# function that replaces placeholders in the specification file.
-# returns the new specification file and the entities that need to be retrieved
 def replace_placeholders(spec_file):
+    """Resolve AIoD ``valueFromPlatform`` input placeholders in a CWL spec.
+
+    For each input that references an AIoD catalogue entity, fetches the entity
+    metadata, records the distribution's ``content_url`` and filename, and
+    rewrites the step requirements so the dataset is staged at runtime.
+
+    Returns the rewritten spec and the list of AIoD entities to retrieve, or
+    ``(None, None)`` if an entity cannot be resolved.
+    """
     entities = []
     spec_file_yaml = yaml.load(spec_file)
     for i in spec_file_yaml['inputs']:
@@ -156,11 +169,26 @@ def replace_placeholders(spec_file):
                 return None, None
 
             data = response.json()
+            # Resolve the distribution to fetch. AIoD content_url is normally a
+            # remote http(s) URL; some co-located deployments use file://.
+            try:
+                distribution = data['distribution'][0]
+                content_url = distribution['content_url']
+            except (KeyError, IndexError, TypeError):
+                return None, None
+            filename = (
+                distribution.get('name')
+                or content_url.rstrip('/').split('/')[-1]
+                or i['id']
+            )
             entities.append(
                 {
                     'id': i['id'],
                     'type': 'aiod-platform',
-                    'data': data
+                    'data': data,
+                    'aiod_url': dataset_url,
+                    'content_url': content_url,
+                    'filename': filename,
                 }
             )
             del i['valueFromPlatform']  # delete it from cwl

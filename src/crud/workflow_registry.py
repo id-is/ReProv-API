@@ -1,3 +1,8 @@
+"""Workflow registry endpoints — CRUD over registered CWL workflows.
+
+Workflows are scoped to the authenticated user's group and uniquely identified
+by their (name, version) pair.
+"""
 from models.response import Response
 from models.user import User
 from fastapi import APIRouter, UploadFile, File, Depends
