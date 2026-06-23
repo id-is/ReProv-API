@@ -1,0 +1,3 @@
+pytest>=7
+# Starlette 0.36's TestClient is incompatible with httpx>=0.28 (dropped app= shortcut)
+httpx>=0.27,<0.28

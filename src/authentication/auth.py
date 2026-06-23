@@ -63,7 +63,9 @@ async def authenticate_user(payload: dict = Depends(get_payload)) -> User:
             first_name=payload.get("given_name"),
             last_name=payload.get("family_name"),
             realm_roles=payload.get("realm_access", {}).get("roles", []),
-            client_roles=payload.get("realm_access", {}).get("roles", [])
+            client_roles=payload.get("resource_access", {}).get(
+                os.environ['KEYCLOAK_CLIENT_ID'], {}
+            ).get("roles", [])
         )
     except Exception as e:
         raise HTTPException(
@@ -71,3 +73,27 @@ async def authenticate_user(payload: dict = Depends(get_payload)) -> User:
             detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def require_roles(*required_roles):
+    """Build a dependency that allows the request only if the authenticated user
+    holds at least one of ``required_roles`` (in their realm or client roles).
+
+    Returns the authenticated :class:`User` on success, or raises ``403``.
+    """
+    async def checker(user: User = Depends(authenticate_user)) -> User:
+        user_roles = set(user.realm_roles or []) | set(user.client_roles or [])
+        if user_roles.isdisjoint(required_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient role; requires one of: "
+                       + ", ".join(required_roles),
+            )
+        return user
+    return checker
+
+
+# Standard operations require the user role (admins also satisfy this);
+# destructive operations require the admin role.
+require_user = require_roles("reprov_user", "reprov_admin")
+require_admin = require_roles("reprov_admin")

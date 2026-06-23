@@ -135,8 +135,33 @@ Once started, you should be able to
 
  1.  Visit the REST API at http://localhost:8000/docs 
 Instructions for using the API will be provided in the next sections
- 3. Visit Keycloak at http://localhost:8080/ . In the current configuration Keylcoak is filled with 5 users and 2 groups. Each user has credentials of the form *useri / passwordi* where i $\in [1,\dots,5]$ (e.g. *user1 / password1*).
+ 3. Visit Keycloak at http://localhost:8080/ . In the current configuration Keycloak is filled with 5 users and 2 groups. Each user has credentials of the form *useri / passwordi* where i $\in [1,\dots,5]$ (e.g. *user1 / password1*).
  You can have admin access by using the credentials defined above. 
+
+
+## Tests
+
+A small test suite lives in [`tests/`](tests/README.md). It covers the most
+useful self-contained logic and does **not** require MySQL, Keycloak, or REANA —
+external calls are mocked and the database session is stubbed (`tests/conftest.py`
+sets dummy environment variables and puts `src/` on the import path).
+
+What is covered:
+
+ - **Unit** — CWL transforms (resource-monitoring wrapper, mapping step, AIoD `valueFromPlatform` resolution), provenance file-relationship resolution, execution helpers (exit-code parsing, command cleaning, AIoD content fetch), and the `require_roles` access-control dependency.
+ - **Integration** — the role-based access control enforced through the real FastAPI request pipeline (non-admin delete is rejected, admin delete passes the gate, standard users can list).
+
+#### Run the tests inside the API image (recommended)
+The application dependencies are already present in the built image:
+
+    docker run --rm -v "$PWD:/app" -w /app reprov-api-api \
+      bash -c "pip install -q -r tests/requirements.txt && python -m pytest tests -q"
+
+#### Run the tests in a local virtual environment
+With the project dependencies installed, add the test-only ones and run pytest:
+
+    pip install -r requirements.txt -r tests/requirements.txt
+    python -m pytest tests -q
 
 
 

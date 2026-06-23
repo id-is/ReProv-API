@@ -10,7 +10,7 @@ from schema.workflow_registry import WorkflowRegistry, WorkflowRegistryModel
 from schema.init_db import session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from ruamel.yaml import YAML
-from authentication.auth import authenticate_user
+from authentication.auth import require_user, require_admin
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ router = APIRouter()
     description="List all workflows in the registry that belong to the same group as the authenticated user."
 )
 async def list_workflows(
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     yaml = YAML(typ='safe', pure=True)
     try:
@@ -60,7 +60,7 @@ async def list_workflows(
 )
 async def get_workflow_details(
     registry_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     yaml = YAML(typ='safe', pure=True)
     try:
@@ -109,7 +109,7 @@ async def register_workflow(
     workflow: WorkflowRegistryModel = Depends(),
     spec_file: UploadFile = File(...),
     input_file: UploadFile = File(None),
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     spec_file_content = spec_file.file.read()
     input_file_content = input_file.file.read() if input_file else None
@@ -167,7 +167,7 @@ async def update_workflow(
     version: str = None,
     spec_file: UploadFile = File(None),
     input_file: UploadFile = File(None),
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_user)
 ):
     try:
         workflow = session.query(WorkflowRegistry).filter(
@@ -233,11 +233,11 @@ async def update_workflow(
 
 @router.delete(
     "/delete/{registry_id}",
-    description="Remove a workflow from the registry, making it unavailable for execution.",
+    description="Remove a workflow from the registry, making it unavailable for execution. Requires the reprov_admin role.",
 )
 async def delete_workflow(
     registry_id: int,
-    user: User = Depends(authenticate_user)
+    user: User = Depends(require_admin)
 ):
     try:
         workflow = session.query(WorkflowRegistry).filter(
