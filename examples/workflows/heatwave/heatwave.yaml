@@ -1,0 +1,6 @@
+dataset_dir: "/var/reana/datasets/med"
+slab_pattern: "era5_????_07_08.grib"
+merged_name: "med_daily_summer.nc"
+labeled_name: "med_daily_labeled.nc"
+model_name: "heatwave_gbm.joblib"
+results_name: "results.txt"

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.mysql import LONGTEXT
 from .init_db import Base
 from pydantic import BaseModel
@@ -14,9 +14,9 @@ class WorkflowRegistryModel(BaseModel):
 
 class WorkflowRegistry(Base):
     __tablename__ = "workflow_registry"
-    #  __table_args__ = (
-    #     UniqueConstraint('name', 'version', name='uq_name_version'),
-    #  )
+    __table_args__ = (
+        UniqueConstraint('name', 'version', name='uq_name_version'),
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)  # PK of table
     name = Column(String(255), nullable=False)

@@ -137,19 +137,19 @@ async def register_workflow(
             error_code=500,
             data={}
         )
-    finally:
-        data = {
-            'username': user.username,
-            'group': user.group,
-            'registry_id': workflow.id,
-            'name': workflow.name,
-            'version': workflow.version
-        }
-        return Response(
-            success=True,
-            message="New Workflow was successfully registered",
-            data=data
-        )
+
+    data = {
+        'username': user.username,
+        'group': user.group,
+        'registry_id': workflow.id,
+        'name': workflow.name,
+        'version': workflow.version
+    }
+    return Response(
+        success=True,
+        message="New Workflow was successfully registered",
+        data=data
+    )
 
 
 @router.put(

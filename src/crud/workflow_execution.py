@@ -440,9 +440,6 @@ async def execute_workflow(
         # Capture execution environment
         _capture_environment(workflow_execution, workflow_registry)
     except Exception as e:
-        os.remove(os.path.join(os.getcwd(), spec_temp_file.name))
-        if workflow_registry.input_file_content:
-            os.remove(os.path.join(os.getcwd(), input_temp_file.name))
         session.rollback()
         return Response(
             success=False,
@@ -454,21 +451,22 @@ async def execute_workflow(
         os.remove(os.path.join(os.getcwd(), spec_temp_file.name))
         if workflow_registry.input_file_content:
             os.remove(os.path.join(os.getcwd(), input_temp_file.name))
-        data = {
-            "username": user.username,
-            "group": user.group,
-            "execution_id": workflow_execution.id,
-            "name": workflow_registry.name,
-            "version": workflow_registry.version,
-            "reana_name": workflow_execution.reana_name,
-            "reana_id": workflow_execution.reana_id,
-            "run_number": workflow_execution.reana_run_number,
-        }
-        return Response(
-            success=True,
-            message="New workflow started",
-            data=data
-        )
+
+    data = {
+        "username": user.username,
+        "group": user.group,
+        "execution_id": workflow_execution.id,
+        "name": workflow_registry.name,
+        "version": workflow_registry.version,
+        "reana_name": workflow_execution.reana_name,
+        "reana_id": workflow_execution.reana_id,
+        "run_number": workflow_execution.reana_run_number,
+    }
+    return Response(
+        success=True,
+        message="New workflow started",
+        data=data
+    )
 
 
 def _capture_environment(workflow_execution, workflow_registry):
