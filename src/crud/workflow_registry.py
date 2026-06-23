@@ -1,3 +1,8 @@
+"""Workflow registry endpoints — CRUD over registered CWL workflows.
+
+Workflows are scoped to the authenticated user's group and uniquely identified
+by their (name, version) pair.
+"""
 from models.response import Response
 from models.user import User
 from fastapi import APIRouter, UploadFile, File, Depends
@@ -137,19 +142,19 @@ async def register_workflow(
             error_code=500,
             data={}
         )
-    finally:
-        data = {
-            'username': user.username,
-            'group': user.group,
-            'registry_id': workflow.id,
-            'name': workflow.name,
-            'version': workflow.version
-        }
-        return Response(
-            success=True,
-            message="New Workflow was successfully registered",
-            data=data
-        )
+
+    data = {
+        'username': user.username,
+        'group': user.group,
+        'registry_id': workflow.id,
+        'name': workflow.name,
+        'version': workflow.version
+    }
+    return Response(
+        success=True,
+        message="New Workflow was successfully registered",
+        data=data
+    )
 
 
 @router.put(

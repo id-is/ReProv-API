@@ -1,3 +1,4 @@
+"""ORM models for the PROV graph: entities, activities, agents, and relations."""
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum
 from datetime import datetime
 from .init_db import Base

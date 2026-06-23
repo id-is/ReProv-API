@@ -25,6 +25,19 @@ This work assumes a platform and core components in line with the architecture s
  - Data provenance for workflows executed within the REANA framework.
  - Visualization of data provenance by generating graph-based PNG representations, allowing for clear and intuitive 
 exploration of workflow dependencies and data flow.
+ - Export of provenance as [W3C PROV-JSON](https://www.w3.org/submissions/prov-json/).
+ - Failure-aware provenance: failed steps are recorded with their status, exit code, and error message.
+ - Per-step resource-usage capture (CPU time, peak memory, disk I/O).
+ - Linking workflow inputs to datasets in the [AI-on-Demand](https://aiod.eu) catalogue via the `valueFromPlatform` keyword.
+ - A [Python SDK](sdk/README.md) for programmatic access to the API.
+
+
+## Documentation & examples
+
+ - [USAGE.md](USAGE.md) — end-to-end walkthrough (authenticate → register → execute → capture provenance), with `curl` and SDK examples.
+ - [examples/](examples/README.md) — ready-to-run example CWL workflows (MNIST, a deliberately failing variant, an AIoD-linked variant, and a larger heatwave-prediction pipeline).
+ - [sdk/](sdk/README.md) — the Python SDK.
+ - Interactive API docs (OpenAPI/Swagger) are served at `/docs` once the API is running.
 
 
 ## Prerequisites
@@ -110,7 +123,7 @@ Create a new virtual environment
 
 #### Change the following variables at .env file
 
-    KEYCLOAK_SERVER_URL=prov_db_addr
+    KEYCLOAK_SERVER_URL=prov_keycloak_addr
     MYSQL_SERVER=prov_db_addr
 
 #### Run Uvicorn Server locally
@@ -122,7 +135,7 @@ Once started, you should be able to
 
  1.  Visit the REST API at http://localhost:8000/docs 
 Instructions for using the API will be provided in the next sections
- 3. Visit Keycloak at http://localhost:8080/ . In the current configuration Keylcoak is filled with 5 users and 2 groups. Each user has credentials of the form *user_i / password_i* where i $\in [1,\dots,5]$.
+ 3. Visit Keycloak at http://localhost:8080/ . In the current configuration Keylcoak is filled with 5 users and 2 groups. Each user has credentials of the form *useri / passwordi* where i $\in [1,\dots,5]$ (e.g. *user1 / password1*).
  You can have admin access by using the credentials defined above. 
 
 
@@ -141,7 +154,7 @@ After you click on it, the authentication prompt will be opened. You have to add
 ![screenshot](media/authorize_prompt.png)
 
 
-Next, click authorize button and you will be redirected to keycloak to fill your credentials. In this example, we are using *user_1* for user and *password_1* for password.
+Next, click authorize button and you will be redirected to keycloak to fill your credentials. In this example, we are using *user1* for user and *password1* for password.
 
 ![screenshot](media/keycloak_prompt.png)
 
@@ -210,6 +223,12 @@ For each workflow execution, we also capture information for each individual ste
 - `status` Status of the step
 - `start_time` When the step started
 - `end_time` When the step ended
+- `exit_code` Exit code of the step (parsed from REANA logs; `0` when finished)
+- `command` The user command executed by the step
+- `error_message` Tail of the step logs, populated only when the step `status` is `failed`
+- `resource_usage` Per-step resource metrics captured by an injected monitoring wrapper: `cpu_time_seconds`, `memory_peak_mb`, `disk_read_bytes`, `disk_write_bytes`, `backend_job_id`
+
+We additionally record the *execution environment* for each execution (REANA server URL, compute backend, Kubernetes memory limit, and the Docker image taken from the CWL spec).
 
 
 #### Provenance
@@ -237,7 +256,7 @@ Basic components of data provenance are Entities and Activities as described in 
    | False |401  |Not authenticated| None|
 	<br>
 
- - /**workflow_registry{registry_id}**
+ - /**workflow_registry/{registry_id}**
 	- Method: ***GET***
 	 - Description:  Retrieve registered workflow with id = {registry_id}
 	 
@@ -256,7 +275,7 @@ Basic components of data provenance are Entities and Activities as described in 
  
  <br>
  
- - **/workflow_registry/register**
+ - **/workflow_registry/register/**
 	- Method: ***POST***
 	 - Description:  Register a new workflow in the platform
 	 
@@ -264,7 +283,7 @@ Basic components of data provenance are Entities and Activities as described in 
     |name| type|
     |--|--|
     | *name* | *string*|
-    | *version* | *int*|
+    | *version* | *string*|
     | *spec_file* | *File*|
     | *input_file (optional)* | *File*|
   
@@ -287,7 +306,7 @@ Basic components of data provenance are Entities and Activities as described in 
     |--|--|
     | *registry_id* | *int*|
     | *name (optional)* | *string*|
-    | *version (optional)* | *int*|
+    | *version (optional)* | *string*|
     | *spec_file (optional)* | *File*|
     | *input_file (optional)* | *File*|
 
@@ -355,6 +374,25 @@ Basic components of data provenance are Entities and Activities as described in 
    | False |404  |Invalid execution_id| None|
     <br>
 
+ - /**workflow_execution/{execution_id}/logs**
+	- Method: ***GET***
+	 - Description:  Retrieve per-step logs for an execution. Live logs are fetched from *REANA* and enriched with stored step info (`exit_code`, `error_message`, `command`).
+	 
+	  **Parameters**:
+    |name| type|
+     |--|--|
+     | *execution_id* | *int*|
+  
+     **Responses**:
+
+   |success| code | message | data
+   |--|--|--|--|
+   | True |200  |Logs retrieved successfully| JSON containing per-step logs|
+   | False |401  |Not authenticated| None|
+   | False |404  |Invalid execution_id| None|
+   | False |503  |Failed to fetch logs from REANA| None|
+    <br>
+
  - /**workflow_execution/execute/{registry_id}**
 	- Method: ***POST***
 	 - Description:  Execute workflow with id = {*registry_id*} by invoking *REANA* system
@@ -396,35 +434,34 @@ Basic components of data provenance are Entities and Activities as described in 
    | False |503 |Problem while deleting REANA workflow | None|
       <br>
 
- - /**workflow_execution/inputs/**
+ - /**workflow_execution/inputs/{execution_id}**
 	- Method: ***GET***
-	 - Description:  Download input files of a previously executed workflow with specific *reana_name* and *reana_run_number*
+	 - Description:  Download input files of a previously executed workflow with the given *execution_id*
 	 
 	  **Parameters**:
     |name| type|
      |--|--|
-     | *reana_name (optional)* | *str*|
-     | *reana_run_number (optional)* | *int*|
+     | *execution_id* | *int*|
   
      **Responses**:
 
    |success| code | message | data
    |--|--|--|--|
-   | True |200  |None| Zipped file containing input files|
+   | True |200  |None| File containing input values|
+   | True |200  |Workflow does not have any input values (default were used)| None|
    | False |401  |Not authenticated| None|
-   | False |404  |Invalid *reana_name* and *reana_run_number* combination| None|
+   | False |404  |Invalid execution_id| None|
    | False |409 |Workflow must be finished in order to download input files | None|
 	<br>
 	
- - /**workflow_execution/outputs/**
+ - /**workflow_execution/outputs/{execution_id}**
 	- Method: ***GET***
-	 - Description:  Download output files of a previously executed workflow with specific *reana_name* and *reana_run_number*
+	 - Description:  Download output files of a previously executed workflow with the given *execution_id*
 	 
 	  **Parameters**:
     |name| type|
      |--|--|
-     | *reana_name* | *str*|
-     | *reana_run_number* | *int*|
+     | *execution_id* | *int*|
   
      **Responses**:
 
@@ -432,41 +469,39 @@ Basic components of data provenance are Entities and Activities as described in 
    |--|--|--|--|
    | True |200  |None| Zipped file containing output files|
    | False |401  |Not authenticated| None|
-   | False |404  |Invalid *reana_name* and *reana_run_number* combination| None|
+   | False |404  |Invalid execution_id| None|
    | False |409 |Workflow must be finished in order to download output files | None|
 
 #### Provenance
 
-- **/provenance/capture/**
+- **/provenance/capture/{execution_id}**
 	 - Method: ***GET***
-	 - Description:   Capture provenance for workflow with specific *reana_name* and *reana_run number*.
+	 - Description:   Capture provenance for the workflow execution with id = {*execution_id*}. File relationships (used/generated) are resolved from the CWL spec, and step status, resource usage, and execution environment are recorded. Works for both *finished* and *failed* executions.
 	 
 	 **Parameters**:
     |name| type|
      |--|--|
-     | *reana_name* | *str*|
-     | *reana_run_number* | *int*|
+     | *execution_id* | *int*|
   
      **Responses**:
 
    |success| code | message | data
    |--|--|--|--|
-   | True |200  |Provenance retrieved successfully| None|
+   | True |200  |Provenance captured successfully| JSON summary (`workflow_status`, `total_steps`, `failed_steps`, `has_detailed_provenance`)|
    | False |401  |Not authenticated| None|
    | False |403  |Provenance was captured before| None|
-   | False |404 |Invalid *reana_name* and *reana_run_number* combination | None|
-   | False| 409 | Workflow must be finished in order to capture provenance| None|
+   | False |404 |Invalid execution_id | None|
+   | False| 409 | Workflow must be finished or failed in order to capture provenance| None|
    <br>
    
- - **/provenance/draw/**
+ - **/provenance/draw/{execution_id}**
 	 - Method: ***GET***
-	 - Description:   Create a graphical represenation of provenance for workflow with specific *reana_name* and *reana_run number* by utilizing the [PyProv](https://pypi.org/project/pyprov/) module.
+	 - Description:   Create a graphical representation of provenance for the workflow execution with id = {*execution_id*} by utilizing the [prov](https://pypi.org/project/prov/) module. Failed step nodes are highlighted in red. Provenance must have been captured first via */provenance/capture/{execution_id}*.
 	 
 	 **Parameters**:
     |name| type|
      |--|--|
-     | *reana_name* | *str*|
-     | *reana_run_number* | *int*|
+     | *execution_id* | *int*|
   
      **Responses**:
 
@@ -474,8 +509,26 @@ Basic components of data provenance are Entities and Activities as described in 
    |--|--|--|--|
    | True |200  |None| PNG file containing graphical representation of provenance|
    | False |401  |Not authenticated| None|
-   | False |403  |Provenance was captured before| None|
-   | False |404 |Invalid *reana_name* and *reana_run_number* combination | None|
+   | False |404 |Invalid execution_id | None|
+   <br>
+
+ - **/provenance/json/{execution_id}**
+	 - Method: ***GET***
+	 - Description:   Export the captured provenance for the workflow execution with id = {*execution_id*} as a [W3C PROV-JSON](https://www.w3.org/submissions/prov-json/) document. Provenance must have been captured first via */provenance/capture/{execution_id}*.
+	 
+	 **Parameters**:
+    |name| type|
+     |--|--|
+     | *execution_id* | *int*|
+  
+     **Responses**:
+
+   |success| code | message | data
+   |--|--|--|--|
+   | True |200  |None| W3C PROV-JSON document|
+   | False |401  |Not authenticated| None|
+   | False |404 |Invalid execution_id | None|
+   | False |404 |No provenance captured yet. Call /capture/{execution_id} first.| None|
 
 Two example outputs can be seen here:
 

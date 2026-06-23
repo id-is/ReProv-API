@@ -1,3 +1,10 @@
+"""Workflow execution endpoints and the REANA execution lifecycle.
+
+Submits registered workflows to REANA, monitors them step-by-step in a
+background task (capturing status, logs, exit codes and per-step resource
+usage), and exposes log/input/output retrieval. AIoD-referenced inputs are
+resolved and uploaded to REANA before execution.
+"""
 import asyncio
 import json
 import os
@@ -13,6 +20,7 @@ from models.user import User
 from utils.cwl import add_resource_monitoring, add_mapping_step, replace_placeholders
 from reana_client.api import client
 import tempfile
+import requests
 from datetime import datetime
 import urllib3
 from models.response import Response
@@ -299,6 +307,24 @@ async def get_execution_logs(
     )
 
 
+def _fetch_aiod_content(content_url):
+    """Fetch the bytes of an AIoD dataset distribution.
+
+    Supports both co-located ``file://`` URLs and the remote http(s)
+    ``content_url`` values exposed by the AIoD metadata catalogue.
+    """
+    if content_url.startswith('file://'):
+        with open(content_url[len('file://'):], 'rb') as f:
+            return f.read()
+    resp = requests.get(
+        content_url,
+        headers={'accept': 'application/octet-stream'},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.content
+
+
 @router.post(
     "/execute/{registry_id}",
     description="Execute workflow by invoking REANA system"
@@ -354,12 +380,9 @@ async def execute_workflow(
 
     for entity in needed_entities:
         if entity['type'] == 'aiod-platform':
-            content_url = entity['data']['distribution'][0]['content_url']
-            path = content_url[len('file://'):]
-
             inputs['parameters'][entity['id']] = {
                 'class': 'File',
-                'path': content_url.split('/')[-1],
+                'path': entity['filename'],
             }
 
     try:
@@ -408,14 +431,11 @@ async def execute_workflow(
                     access_token=os.environ['REANA_ACCESS_TOKEN']
                 )
             elif entity['type'] == 'aiod-platform':
-                content_url = entity['data']['distribution'][0]['content_url']
-                path = content_url[len('file://'):]
-                with open(path, "rb") as f:
-                    file_content = f.read()
+                file_content = _fetch_aiod_content(entity['content_url'])
                 client.upload_file(
                     workflow=reana_workflow['workflow_id'],
                     file_=file_content,
-                    file_name=content_url.split('/')[-1],
+                    file_name=entity['filename'],
                     access_token=os.environ['REANA_ACCESS_TOKEN']
                 )
 
@@ -440,9 +460,6 @@ async def execute_workflow(
         # Capture execution environment
         _capture_environment(workflow_execution, workflow_registry)
     except Exception as e:
-        os.remove(os.path.join(os.getcwd(), spec_temp_file.name))
-        if workflow_registry.input_file_content:
-            os.remove(os.path.join(os.getcwd(), input_temp_file.name))
         session.rollback()
         return Response(
             success=False,
@@ -454,21 +471,22 @@ async def execute_workflow(
         os.remove(os.path.join(os.getcwd(), spec_temp_file.name))
         if workflow_registry.input_file_content:
             os.remove(os.path.join(os.getcwd(), input_temp_file.name))
-        data = {
-            "username": user.username,
-            "group": user.group,
-            "execution_id": workflow_execution.id,
-            "name": workflow_registry.name,
-            "version": workflow_registry.version,
-            "reana_name": workflow_execution.reana_name,
-            "reana_id": workflow_execution.reana_id,
-            "run_number": workflow_execution.reana_run_number,
-        }
-        return Response(
-            success=True,
-            message="New workflow started",
-            data=data
-        )
+
+    data = {
+        "username": user.username,
+        "group": user.group,
+        "execution_id": workflow_execution.id,
+        "name": workflow_registry.name,
+        "version": workflow_registry.version,
+        "reana_name": workflow_execution.reana_name,
+        "reana_id": workflow_execution.reana_id,
+        "run_number": workflow_execution.reana_run_number,
+    }
+    return Response(
+        success=True,
+        message="New workflow started",
+        data=data
+    )
 
 
 def _capture_environment(workflow_execution, workflow_registry):
@@ -665,6 +683,12 @@ def _clean_command(raw_command):
 
 
 async def monitor_execution(reana_id):
+    """Background task: poll REANA and persist each step as it starts/finishes.
+
+    Records every step transition, finalising the previous step (status, logs,
+    exit code, resource usage) before recording the next, until the workflow
+    reaches a terminal state.
+    """
     try:
         workflow_execution = session.query(WorkflowExecution).filter(WorkflowExecution.reana_id == reana_id).first()
     except SQLAlchemyError as e:

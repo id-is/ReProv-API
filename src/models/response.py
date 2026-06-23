@@ -1,3 +1,6 @@
+"""Uniform API response envelope (success, message, data, error_code)."""
+
+
 class Response:
     def __init__(self, success=False, message='', data=None, error_code=None):
         self.success = success

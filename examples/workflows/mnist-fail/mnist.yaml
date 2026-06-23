@@ -1,0 +1,5 @@
+dataset_url: https://s3.amazonaws.com/img-datasets/mnist.pkl.gz
+train_dataset_name: train.pkl
+test_dataset_name: test.pkl
+model_name: mnist_model.keras
+results_name: my_results.txt
